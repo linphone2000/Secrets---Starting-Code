@@ -5,14 +5,15 @@ const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const app = express();
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
 
 mongoose.connect("mongodb://localhost:27017/userDB", { useNewUrlParser: true });
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
 });
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] }); //This must be done before defining schema
 const User = mongoose.model("User", userSchema);
 
 app.use(express.static("public"));
@@ -36,38 +37,9 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-app.post("/register", async (req, res) => {
-  console.log(req.body);
-  const newUser = new User({
-    email: req.body.email,
-    password: req.body.password,
-  });
-  try {
-    await newUser.save();
-    res.render("secrets");
-  } catch (error) {
-    res.send(error);
-  }
-});
+app.post("/register", async (req, res) => {});
 
-app.post("/login", async (req, res) => {
-  const email = req.body.email;
-  const password = req.body.password;
-  try {
-    const foundUser = await User.findOne({ email: email });
-    if (foundUser) {
-      if (foundUser.password == password) {
-        res.render("secrets");
-      } else {
-        res.send("Wrong password.");
-      }
-    } else {
-      res.send("No User");
-    }
-  } catch (error) {
-    res.send(error);
-  }
-});
+app.post("/login", async (req, res) => {});
 
 app.listen(3000, () => {
   console.log("Server running on port 3000.");
