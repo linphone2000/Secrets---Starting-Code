@@ -8,6 +8,8 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 // Middle Wares
 app.use(express.static("public"));
@@ -33,17 +35,55 @@ mongoose.connect("mongodb://localhost:27017/userDB", { useNewUrlParser: true });
 const userSchema = new mongoose.Schema({
   username: String,
   password: String,
+  googleId: String,
+  secret: String
 });
 userSchema.plugin(passportLocalMongoose); //Passport
+userSchema.plugin(findOrCreate); //Passport Google OAuth 2.0
 const User = mongoose.model("User", userSchema);
+
 passport.use(User.createStrategy()); //Passport
-passport.serializeUser(User.serializeUser()); //Passport
-passport.deserializeUser(User.deserializeUser()); //Passport
+passport.serializeUser(function(user, done) { //Passport
+  done(null, user);
+});
+passport.deserializeUser(function(user, done) { //Passport
+  done(null, user);
+});
+passport.use( //Passport and Google authentication
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrets",
+      userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+    },
+    function (accessToken, refreshToken, profile, cb) {
+      console.log(profile);
+      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return cb(err, user);
+      });
+    }
+  )
+);
 
 // Routes
 app.get("/", (req, res) => {
   res.render("home");
 });
+
+app.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["profile"] })
+);
+
+app.get(
+  "/auth/google/secrets",
+  passport.authenticate("google", { failureRedirect: "/login" }),
+  function (req, res) {
+    // Successful authentication, redirect to secrets page.
+    res.redirect("/secrets");
+  }
+);
 
 app.get("/login", (req, res) => {
   res.render("login");
@@ -53,11 +93,46 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-app.get("/secrets", (req, res) => {
+app.get("/secrets", async (req, res) => {
+  try {
+    if (req.isAuthenticated()) {
+      const foundUsers = await User.find({ secret: { $ne: null } });
+      if (foundUsers) {
+        res.render("secrets", { usersWithSecrets: foundUsers });
+      } else {
+        console.log("No users");
+      }
+    } else {
+      res.redirect("/login");
+    }
+  } catch (err) {
+    console.error(err);
+    // Handle errors appropriately, e.g., show an error page
+  }
+});
+
+
+app.get("/submit", (req, res) => {
   if (req.isAuthenticated()) {
-    res.render("secrets");
+    res.render("submit");
   } else {
     res.redirect("/login");
+  }
+});
+
+app.post("/submit", async (req, res) => {
+  try {
+    const submittedSecret = req.body.secret;
+    const foundUser = await User.findById(req.user._id);
+    if (foundUser) {
+      foundUser.secret = submittedSecret;
+      await foundUser.save();
+      res.redirect("/secrets");
+    } else {
+      console.log("User not found");// Handle the case when the user is not found (e.g., show an error page)
+    }
+  } catch (err) {
+    console.error(err);// Handle errors (e.g., show an error page)
   }
 });
 
